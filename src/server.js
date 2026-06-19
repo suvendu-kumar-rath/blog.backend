@@ -57,7 +57,34 @@ app.use(morgan('combined'));
 // ==================== STATIC FILES ====================
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
+// ==================== DATABASE AVAILABILITY MIDDLEWARE ====================
+// Middleware to check if database operations are allowed
+const dbReadyMiddleware = (req, res, next) => {
+  // Skip for health check endpoints
+  if (req.path === '/api/health' || req.path === '/api/db-status') {
+    return next();
+  }
+
+  // If database is not connected, return 503 Service Unavailable
+  if (!sequelize.isConnected) {
+    return res.status(503).json({
+      success: false,
+      message: 'Service temporarily unavailable',
+      error: 'Database connection is being established. Please try again in a few moments.',
+      data: {
+        status: 'initializing',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  next();
+};
+
 // ==================== ROUTES ====================
+// Apply database ready middleware to all API routes
+app.use('/api/', dbReadyMiddleware);
+
 // Authentication routes
 app.use('/api/auth', authRoutes);
 
@@ -87,9 +114,32 @@ app.get('/api/health', (req, res) => {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || 'development',
-      database: sequelize.isConnected ? 'connected' : 'disconnected'
+      database: sequelize.isConnected ? 'connected' : 'connecting'
     }
   });
+});
+
+// ==================== STARTUP CHECK ENDPOINT ====================
+app.get('/api/startup', (req, res) => {
+  if (sequelize.isConnected) {
+    return res.status(200).json({
+      success: true,
+      message: 'Application is ready',
+      data: {
+        status: 'ready',
+        timestamp: new Date().toISOString()
+      }
+    });
+  } else {
+    return res.status(503).json({
+      success: false,
+      message: 'Application is initializing',
+      data: {
+        status: 'initializing',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
 });
 
 // ==================== DATABASE STATUS ENDPOINT ====================
@@ -230,20 +280,28 @@ app.use((error, req, res, next) => {
 // ==================== DATABASE CONNECTION (ASYNC) ====================
 const initializeDatabase = async () => {
   let retries = 0;
-  const maxRetries = 5;
-  const retryDelay = 5000; // 5 seconds
+  const maxRetries = 10;
+  const retryDelay = 3000; // 3 seconds
 
   const attemptConnection = async () => {
     try {
-      console.log(`\n📡 Attempting database connection (attempt ${retries + 1}/${maxRetries})...`);
+      console.log(`📡 Database connection attempt ${retries + 1}/${maxRetries}...`);
       
       // Test database connection
       await sequelize.authenticate();
       console.log('✓ Database connection established');
 
-      // Sync models with database
-      await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
-      console.log('✓ Database models synchronized');
+      // Sync models with database (non-blocking for production)
+      if (process.env.NODE_ENV === 'development') {
+        await sequelize.sync({ alter: true });
+        console.log('✓ Database models synchronized (development mode)');
+      } else {
+        // In production, don't use alter mode to avoid accidental changes
+        sequelize.sync({ alter: false }).catch(err => {
+          console.warn('⚠️  Database sync warning:', err.message);
+        });
+        console.log('✓ Database models check started (production mode)');
+      }
 
       // Mark database as connected
       sequelize.isConnected = true;
@@ -252,15 +310,15 @@ const initializeDatabase = async () => {
       return true;
     } catch (error) {
       retries++;
-      console.error(`✗ Database connection failed: ${error.message}`);
+      console.error(`✗ Connection failed: ${error.message}`);
 
       if (retries < maxRetries) {
-        console.log(`⏳ Retrying in ${retryDelay / 1000} seconds...\n`);
+        console.log(`⏳ Retry in ${retryDelay / 1000}s... (${retries}/${maxRetries})\n`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
         return attemptConnection();
       } else {
-        console.warn('⚠️  Max database connection retries reached. Server running without database.');
-        console.warn('⚠️  Database-dependent operations will fail until connection is restored.\n');
+        console.error('✗ Max retries reached. Database connection failed.');
+        console.error('⚠️  Server is running but database operations will fail.\n');
         return false;
       }
     }
@@ -282,26 +340,23 @@ const server = app.listen(PORT, () => {
 ║  Status:      ✓ Running                                  ║
 ╚═══════════════════════════════════════════════════════════╝
   `);
-  console.log('📚 Available Features:');
-  console.log('  ✓ Role-based Authentication (Admin/Editor)');
-  console.log('  ✓ JWT Token-based Authorization');
-  console.log('  ✓ Editor Management (Admin only)');
-  console.log('  ✓ Post Management (Admin & Editor)');
-  console.log('  ✓ Advertisement Management (Admin only)');
-  console.log('  ✓ Google Drive Image Upload');
-  console.log('  ✓ Rate Limiting & Security Headers');
-  console.log('  ✓ Error Handling & Validation');
-  console.log('\n📡 Health Checks: /api/health (server) | /api/db-status (database)\n');
+  console.log('📚 Available Endpoints:');
+  console.log('  ✓ /api/health - Server health check');
+  console.log('  ✓ /api/startup - App readiness check');
+  console.log('  ✓ /api/db-status - Database status');
+  console.log('\n✓ Server listening on http://localhost:' + PORT);
+  console.log('⏳ Initializing database connection...\n');
 });
 
 // Initialize database asynchronously (non-blocking)
+console.log('⏳ Starting database initialization...\n');
 initializeDatabase().catch(error => {
   console.error('Database initialization error:', error.message);
 });
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('\n⏹  Shutting down gracefully...');
+  console.log('\n\n⏹  Shutting down gracefully...');
   
   try {
     if (sequelize.isConnected) {
@@ -326,13 +381,13 @@ process.on('SIGINT', async () => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  process.exit(1);
+  console.error('❌ Uncaught Exception:', error.message);
+  console.error(error.stack);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('❌ Unhandled Rejection:', reason);
 });
 
 module.exports = app;
