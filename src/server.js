@@ -42,7 +42,7 @@ const limiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => {
     // Skip rate limiting for health checks
-    return req.path === '/api/health';
+    return req.path === '/api/health' || req.path === '/api/db-status';
   }
 });
 app.use('/api/', limiter);
@@ -86,9 +86,35 @@ app.get('/api/health', (req, res) => {
     data: {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development'
+      environment: process.env.NODE_ENV || 'development',
+      database: sequelize.isConnected ? 'connected' : 'disconnected'
     }
   });
+});
+
+// ==================== DATABASE STATUS ENDPOINT ====================
+app.get('/api/db-status', async (req, res) => {
+  try {
+    const isConnected = await sequelize.authenticate();
+    return res.status(200).json({
+      success: true,
+      message: 'Database is connected',
+      data: {
+        status: 'connected',
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    return res.status(503).json({
+      success: false,
+      message: 'Database connection failed',
+      data: {
+        status: 'disconnected',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
 });
 
 // ==================== 404 HANDLER ====================
@@ -131,7 +157,8 @@ app.use('*', (req, res) => {
         'POST /api/upload (authenticated users)'
       ],
       health: [
-        'GET /api/health'
+        'GET /api/health',
+        'GET /api/db-status'
       ]
     }
   });
@@ -200,22 +227,53 @@ app.use((error, req, res, next) => {
   });
 });
 
-// ==================== DATABASE CONNECTION & SERVER START ====================
+// ==================== DATABASE CONNECTION (ASYNC) ====================
+const initializeDatabase = async () => {
+  let retries = 0;
+  const maxRetries = 5;
+  const retryDelay = 5000; // 5 seconds
+
+  const attemptConnection = async () => {
+    try {
+      console.log(`\n📡 Attempting database connection (attempt ${retries + 1}/${maxRetries})...`);
+      
+      // Test database connection
+      await sequelize.authenticate();
+      console.log('✓ Database connection established');
+
+      // Sync models with database
+      await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
+      console.log('✓ Database models synchronized');
+
+      // Mark database as connected
+      sequelize.isConnected = true;
+      console.log('✓ Database is ready for operations\n');
+
+      return true;
+    } catch (error) {
+      retries++;
+      console.error(`✗ Database connection failed: ${error.message}`);
+
+      if (retries < maxRetries) {
+        console.log(`⏳ Retrying in ${retryDelay / 1000} seconds...\n`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        return attemptConnection();
+      } else {
+        console.warn('⚠️  Max database connection retries reached. Server running without database.');
+        console.warn('⚠️  Database-dependent operations will fail until connection is restored.\n');
+        return false;
+      }
+    }
+  };
+
+  return attemptConnection();
+};
+
+// ==================== SERVER START ====================
 const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
-  try {
-    // Test database connection
-    await sequelize.authenticate();
-    console.log('✓ Database connection established');
-
-    // Sync models with database
-    await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
-    console.log('✓ Database models synchronized');
-
-    // Start server
-    app.listen(PORT, () => {
-      console.log(`
+const server = app.listen(PORT, () => {
+  console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║           CMS Admin Panel Backend - API Server            ║
 ║                                                           ║
@@ -223,32 +281,58 @@ const startServer = async () => {
 ║  Environment: ${(process.env.NODE_ENV || 'development').padEnd(15)}             ║
 ║  Status:      ✓ Running                                  ║
 ╚═══════════════════════════════════════════════════════════╝
-      `);
-      console.log('📚 Available Features:');
-      console.log('  ✓ Role-based Authentication (Admin/Editor)');
-      console.log('  ✓ JWT Token-based Authorization');
-      console.log('  ✓ Editor Management (Admin only)');
-      console.log('  ✓ Post Management (Admin & Editor)');
-      console.log('  ✓ Advertisement Management (Admin only)');
-      console.log('  ✓ Google Drive Image Upload');
-      console.log('  ✓ Rate Limiting & Security Headers');
-      console.log('  ✓ Error Handling & Validation');
-      console.log('\n📡 API Documentation: Check /api/health for available endpoints');
-    });
-  } catch (error) {
-    console.error('✗ Failed to start server:', error.message);
-    process.exit(1);
-  }
-};
+  `);
+  console.log('📚 Available Features:');
+  console.log('  ✓ Role-based Authentication (Admin/Editor)');
+  console.log('  ✓ JWT Token-based Authorization');
+  console.log('  ✓ Editor Management (Admin only)');
+  console.log('  ✓ Post Management (Admin & Editor)');
+  console.log('  ✓ Advertisement Management (Admin only)');
+  console.log('  ✓ Google Drive Image Upload');
+  console.log('  ✓ Rate Limiting & Security Headers');
+  console.log('  ✓ Error Handling & Validation');
+  console.log('\n📡 Health Checks: /api/health (server) | /api/db-status (database)\n');
+});
 
-startServer();
+// Initialize database asynchronously (non-blocking)
+initializeDatabase().catch(error => {
+  console.error('Database initialization error:', error.message);
+});
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n⏹  Shutting down gracefully...');
-  await sequelize.close();
-  console.log('✓ Database connection closed');
-  process.exit(0);
+  
+  try {
+    if (sequelize.isConnected) {
+      await sequelize.close();
+      console.log('✓ Database connection closed');
+    }
+  } catch (error) {
+    console.error('Error closing database:', error.message);
+  }
+
+  server.close(() => {
+    console.log('✓ Server closed');
+    process.exit(0);
+  });
+
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    console.error('✗ Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 module.exports = app;
