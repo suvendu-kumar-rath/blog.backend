@@ -37,9 +37,6 @@ const sequelize = new Sequelize(
 // Store connection status
 sequelize.isConnected = false;
 
-// Handle connection errors silently (don't crash)
-sequelize.on('error', (err) => {
-  console.error('Sequelize connection error:', err.message);
-});
+
 
 module.exports = sequelize;
