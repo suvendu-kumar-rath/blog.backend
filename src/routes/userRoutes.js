@@ -119,7 +119,3 @@ router.get(
 );
 
 module.exports = router;
-
-);
-
-module.exports = router;

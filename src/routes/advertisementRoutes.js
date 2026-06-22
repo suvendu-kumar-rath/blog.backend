@@ -3,7 +3,7 @@ const { body, param } = require('express-validator');
 const advertisementController = require('../controllers/advertisementController');
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
-const { uploadSingle } = require('../middleware/uploadMiddleware');
+const upload = require('../middleware/uploadMiddleware');
 
 const router = express.Router();
 
@@ -42,7 +42,7 @@ router.post(
   '/',
   authMiddleware,
   roleMiddleware(['admin']),
-  uploadSingle,
+  upload.single('image'),
   [
     body('title')
       .trim()
@@ -66,7 +66,7 @@ router.put(
   '/:id',
   authMiddleware,
   roleMiddleware(['admin']),
-  uploadSingle,
+  upload.single('image'),
   [
     param('id').isNumeric().withMessage('Invalid advertisement ID'),
     body('title')

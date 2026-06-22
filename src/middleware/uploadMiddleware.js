@@ -50,8 +50,5 @@ const uploadMultiple = multer({
   fileFilter
 });
 
-module.exports = {
-  uploadSingle: uploadSingle.single('image'),
-  uploadMultiple: uploadMultiple.array('images', 5)
-};
+module.exports = uploadSingle;
 

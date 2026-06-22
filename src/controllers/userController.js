@@ -348,29 +348,6 @@ exports.getUserProfile = async (req, res) => {
   }
 };
 
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-        error: 'The requested user does not exist'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'User profile retrieved successfully',
-      data: user
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to retrieve user profile',
-      error: error.message
-    });
-  }
-};
-
 // Create editor (admin only)
 exports.createEditor = async (req, res) => {
   try {
