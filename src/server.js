@@ -61,7 +61,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 // Middleware to check if database operations are allowed
 const dbReadyMiddleware = (req, res, next) => {
   // Skip for health check endpoints
-  if (req.path === '/api/health' || req.path === '/api/db-status') {
+  if (req.path === '/api/health' || req.path === '/api/db-status' || req.path === '/' || req.path === '/api/startup') {
     return next();
   }
 
@@ -82,6 +82,15 @@ const dbReadyMiddleware = (req, res, next) => {
 };
 
 // ==================== ROUTES ====================
+// Root health check — always responds 200
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'API server is running',
+    db: sequelize.isConnected ? 'connected' : 'connecting'
+  });
+});
+
 // Apply database ready middleware to all API routes
 app.use('/api/', dbReadyMiddleware);
 
