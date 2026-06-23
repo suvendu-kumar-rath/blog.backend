@@ -22,7 +22,6 @@ const sequelize = new Sequelize(
       supportBigNumbers: true,
       bigNumberStrings: true,
       charset: 'utf8mb4',
-      collate: 'utf8mb4_unicode_ci',
       waitForConnections: true
     },
     define: {
