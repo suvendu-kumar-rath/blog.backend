@@ -98,7 +98,7 @@ app.use('/api/', dbReadyMiddleware);
 app.use('/api/auth', authRoutes);
 
 // User and editor management routes
-app.use('/api/users', userRoutes);
+app.use('/api', userRoutes);
 
 // Post management routes
 app.use('/api/posts', postRoutes);

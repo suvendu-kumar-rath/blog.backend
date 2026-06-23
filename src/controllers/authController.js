@@ -1,5 +1,4 @@
 const User = require('../models/User');
-const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const { comparePassword } = require('../utils/password');
@@ -66,7 +65,7 @@ exports.register = async (req, res) => {
         email: user.email,
         role: user.role
       },
-      process.env.JWT_SECRET || 'your-secret-key',
+      process.env.JWT_ACCESS_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
 
@@ -148,7 +147,7 @@ exports.login = async (req, res) => {
         email: user.email,
         role: user.role
       },
-      process.env.JWT_SECRET || 'your-secret-key',
+      process.env.JWT_ACCESS_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
 

@@ -1,5 +1,4 @@
 const User = require('../models/User');
-const bcryptjs = require('bcryptjs');
 const { validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 
@@ -343,60 +342,6 @@ exports.getUserProfile = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch user profile',
-      error: error.message
-    });
-  }
-};
-
-// Create editor (admin only)
-exports.createEditor = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation error',
-        error: errors.array()
-      });
-    }
-
-    const { name, email, password } = req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email already in use',
-        error: 'User with this email already exists'
-      });
-    }
-
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const editor = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      role: 'editor'
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: 'Editor created successfully',
-      data: {
-        id: editor.id,
-        name: editor.name,
-        email: editor.email,
-        role: editor.role
-      }
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to create editor',
       error: error.message
     });
   }

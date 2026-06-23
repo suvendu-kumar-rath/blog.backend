@@ -11,7 +11,7 @@ const router = express.Router();
  * GET /api/users/profile/me
  */
 router.get(
-  '/profile/me',
+  '/users/profile/me',
   authMiddleware,
   userController.getUserProfile
 );
