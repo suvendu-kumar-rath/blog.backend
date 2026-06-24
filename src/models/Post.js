@@ -8,22 +8,47 @@ const Post = sequelize.define('Post', {
     autoIncrement: true,
     primaryKey: true
   },
-  title: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  slug: {
-    type: DataTypes.STRING,
+  heading: {
+    type: DataTypes.STRING(255),
     allowNull: false,
-    unique: true
+    validate: {
+      notEmpty: { msg: 'Heading is required' },
+      len: [3, 255]
+    }
   },
-  content: {
+  matter: {
     type: DataTypes.TEXT,
-    allowNull: false
+    allowNull: false,
+    validate: {
+      notEmpty: { msg: 'Content (matter) is required' }
+    }
   },
-  image: {
-    type: DataTypes.STRING,
+  category: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    validate: {
+      notEmpty: { msg: 'Category is required' }
+    }
+  },
+  subcategory: {
+    type: DataTypes.STRING(100),
     allowNull: true
+  },
+  images: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null
+  },
+  isTrending: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  status: {
+    type: DataTypes.ENUM('draft', 'published'),
+    defaultValue: 'published',
+    validate: {
+      isIn: [['draft', 'published']]
+    }
   },
   authorId: {
     type: DataTypes.INTEGER,
@@ -31,19 +56,10 @@ const Post = sequelize.define('Post', {
     references: {
       model: User,
       key: 'id'
+    },
+    validate: {
+      notEmpty: { msg: 'Author ID is required' }
     }
-  },
-  categoryId: {
-    type: DataTypes.INTEGER,
-    allowNull: true
-  },
-  status: {
-    type: DataTypes.ENUM('draft', 'pending', 'published', 'rejected'),
-    defaultValue: 'draft'
-  },
-  views: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
   },
   createdAt: {
     type: DataTypes.DATE,
@@ -55,9 +71,19 @@ const Post = sequelize.define('Post', {
   }
 }, {
   tableName: 'posts',
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    { fields: ['category'] },
+    { fields: ['isTrending'] },
+    { fields: ['status'] },
+    { fields: ['authorId'] }
+  ]
 });
 
-Post.belongsTo(User, { foreignKey: 'authorId', as: 'author' });
+// Association with User
+Post.belongsTo(User, { 
+  foreignKey: 'authorId', 
+  as: 'author'
+});
 
 module.exports = Post;

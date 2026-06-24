@@ -1,49 +1,49 @@
 const express = require('express');
-const { body, param } = require('express-validator');
+const router = express.Router();
 const postController = require('../controllers/postController');
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
-const upload = require('../middleware/uploadMiddleware');
 
-const router = express.Router();
+// ==================== PUBLIC ROUTES ====================
 
-// Public routes
+// Get all posts (with pagination, filtering by category and trending)
 router.get('/', postController.getAllPosts);
-router.get('/category/:slug', postController.getPostsByCategory);
-router.get('/search', postController.searchPosts);
-router.get('/:slug', postController.getPostBySlug);
 
-// Admin only routes (for blog management)
+// Get single post by ID
+router.get('/:id', postController.getPostById);
+
+// ==================== AUTHENTICATED ROUTES ====================
+
+// Create post (admin & editor only)
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['admin']),
-  upload.single('image'),
-  [
-    body('title').trim().notEmpty().withMessage('Title is required'),
-    body('content').notEmpty().withMessage('Content is required'),
-    body('categoryId').optional().isInt().withMessage('Category ID must be an integer')
-  ],
+  roleMiddleware(['admin', 'editor']),
   postController.createPost
 );
 
+// Update post (admin & editor only)
 router.put(
   '/:id',
   authMiddleware,
-  roleMiddleware(['admin']),
-  upload.single('image'),
-  [
-    body('title').optional().trim().notEmpty(),
-    body('content').optional().notEmpty(),
-    body('categoryId').optional().isInt(),
-    body('status')
-      .optional()
-      .isIn(['draft', 'pending', 'published', 'rejected'])
-      .withMessage('Invalid status')
-  ],
+  roleMiddleware(['admin', 'editor']),
   postController.updatePost
 );
 
-router.delete('/:id', authMiddleware, roleMiddleware(['admin']), postController.deletePost);
+// Mark post as trending (admin only)
+router.patch(
+  '/:id/trending',
+  authMiddleware,
+  roleMiddleware(['admin']),
+  postController.markAsTrending
+);
+
+// Delete post (admin only)
+router.delete(
+  '/:id',
+  authMiddleware,
+  roleMiddleware(['admin']),
+  postController.deletePost
+);
 
 module.exports = router;

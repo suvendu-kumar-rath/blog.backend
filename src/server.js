@@ -17,6 +17,16 @@ const likeRoutes = require('./routes/likeRoutes');
 const shareRoutes = require('./routes/shareRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 
+// ==================== IMPORT MODELS ====================
+// Import all models to register them with Sequelize before sync
+const User = require('./models/User');
+const Post = require('./models/Post');
+const Category = require('./models/Category');
+const Advertisement = require('./models/Advertisement');
+const Like = require('./models/Like');
+const Share = require('./models/Share');
+const Comment = require('./models/Comment');
+
 const app = express();
 
 // ==================== SECURITY MIDDLEWARE ====================
@@ -306,10 +316,11 @@ const initializeDatabase = async () => {
 
       // Sync models with database (non-blocking for production)
       if (process.env.NODE_ENV === 'development') {
-        await sequelize.sync({ alter: true });
-        console.log('✓ Database models synchronized (development mode)');
+        // force: true will drop and recreate tables (development only - will lose data!)
+        await sequelize.sync({ force: true });
+        console.log('✓ Database models synchronized (development mode - tables recreated)');
       } else {
-        // In production, don't use alter mode to avoid accidental changes
+        // In production, don't use force or alter mode to avoid accidental changes
         sequelize.sync({ alter: false }).catch(err => {
           console.warn('⚠️  Database sync warning:', err.message);
         });
