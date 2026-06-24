@@ -300,6 +300,93 @@ app.use((error, req, res, next) => {
   });
 });
 
+// ==================== AUTO MIGRATION FUNCTION ====================
+const runAutoMigration = async (queryInterface) => {
+  try {
+    console.log('🔄 Running auto-migration for posts table...');
+    
+    const tables = await queryInterface.showAllTables();
+    if (!tables.includes('posts')) {
+      console.log('ℹ️  Posts table does not exist yet, will be created by sync');
+      return;
+    }
+
+    const describeTable = await queryInterface.describeTable('posts');
+    const { DataTypes } = require('sequelize');
+    
+    // Remove old columns if they exist
+    const columnsToRemove = ['title', 'slug', 'content', 'image', 'categoryId', 'views'];
+    for (const col of columnsToRemove) {
+      if (describeTable[col]) {
+        console.log(`  - Removing old "${col}" column`);
+        try {
+          await queryInterface.removeColumn('posts', col);
+        } catch (err) {
+          console.log(`  ⚠️  Could not remove ${col}:`, err.message);
+        }
+      }
+    }
+
+    // Add new columns if they don't exist
+    const updatedTable = await queryInterface.describeTable('posts');
+    
+    if (!updatedTable.heading) {
+      console.log('  - Adding "heading" column');
+      await queryInterface.addColumn('posts', 'heading', {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        defaultValue: 'Untitled'
+      });
+    }
+
+    if (!updatedTable.matter) {
+      console.log('  - Adding "matter" column');
+      await queryInterface.addColumn('posts', 'matter', {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: ''
+      });
+    }
+
+    if (!updatedTable.category) {
+      console.log('  - Adding "category" column');
+      await queryInterface.addColumn('posts', 'category', {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        defaultValue: 'general'
+      });
+    }
+
+    if (!updatedTable.subcategory) {
+      console.log('  - Adding "subcategory" column');
+      await queryInterface.addColumn('posts', 'subcategory', {
+        type: DataTypes.STRING(100),
+        allowNull: true
+      });
+    }
+
+    if (!updatedTable.images) {
+      console.log('  - Adding "images" column');
+      await queryInterface.addColumn('posts', 'images', {
+        type: DataTypes.JSON,
+        allowNull: true
+      });
+    }
+
+    if (!updatedTable.isTrending) {
+      console.log('  - Adding "isTrending" column');
+      await queryInterface.addColumn('posts', 'isTrending', {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+      });
+    }
+
+    console.log('✓ Auto-migration completed');
+  } catch (error) {
+    console.error('⚠️  Auto-migration error:', error.message);
+  }
+};
+
 // ==================== DATABASE CONNECTION (ASYNC) ====================
 const initializeDatabase = async () => {
   let retries = 0;
@@ -314,10 +401,13 @@ const initializeDatabase = async () => {
       await sequelize.authenticate();
       console.log('✓ Database connection established');
 
+      // Run auto-migration for posts table (all environments)
+      await runAutoMigration(sequelize.getQueryInterface());
+
       // Sync models with database (non-blocking for production)
       if (process.env.NODE_ENV === 'development') {
-        // force: true will drop and recreate tables (development only - will lose data!)
-        await sequelize.sync({ force: true });
+        // alter: true will modify existing tables without dropping data
+        await sequelize.sync({ alter: true });
         console.log('✓ Database models synchronized (development mode - tables recreated)');
       } else {
         // In production, don't use force or alter mode to avoid accidental changes
