@@ -28,7 +28,8 @@ const corsOptions = {
   origin: [
     'http://localhost:5174',      // Development
     'http://localhost:5173',      // Vite default port
-    'https://ampercent.in',       // Production domain
+    'https://ampercent.in',
+    'https://admin-dashboard-bay-theta.vercel.app',       // Production domain
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
